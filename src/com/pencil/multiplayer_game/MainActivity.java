@@ -16,21 +16,18 @@ import org.andengine.entity.scene.background.Background;
 import org.andengine.entity.util.FPSLogger;
 import org.andengine.input.touch.TouchEvent;
 import org.andengine.input.touch.detector.SurfaceGestureDetector;
+import org.andengine.input.touch.detector.SurfaceGestureDetectorAdapter;
 import org.andengine.opengl.vbo.VertexBufferObjectManager;
 import org.andengine.ui.activity.SimpleBaseGameActivity;
-import org.andengine.util.algorithm.collision.LineCollisionChecker;
+import org.andengine.util.color.Color;
 
-import com.badlogic.gdx.math.Vector2;
-import com.badlogic.gdx.physics.box2d.CircleShape;
-
-
-
-import android.content.pm.ActivityInfo;
 import android.graphics.Rect;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Bundle;
+import android.util.Log;
 import android.view.Surface;
 import android.view.WindowManager;
 
@@ -54,14 +51,16 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 	double distanceX = 0, distanceY = 0;
 
 	private static final int LINE_COUNT = 100;
-	private boolean isHorizontal = false;
-	boolean previous_isHorizontal = isHorizontal;
-
+	
 	static double vx=0;
 	// speed
 	static double vy=0;
 	static double constantFriction = 0;
 	Rect r;
+
+	private enum direction {left, right, up, down};
+	private direction currentDirection=direction.down, previousDirection=currentDirection; 
+	private SurfaceGestureDetector  mSGDA;
 	// acceleration
 	public static final float DistanceScale = 10;	
 	// ===========================================================
@@ -79,7 +78,64 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 	// ===========================================================
 	// Methods for/from SuperClass/Interfaces
 	// ===========================================================
+	@Override
+	protected void onCreate(final Bundle pSavedInstanceState) {
+	    super.onCreate(pSavedInstanceState);
 
+	    this.mSGDA = new SurfaceGestureDetector (null) {
+	    	
+	    	@Override
+			protected boolean onSingleTap() {
+				// TODO Auto-generated method stub
+				return false;
+			}
+
+			@Override
+			protected boolean onDoubleTap() {
+				// TODO Auto-generated method stub
+				return false;
+			}
+
+			@Override
+			protected boolean onSwipeUp() {
+				previousDirection = currentDirection;
+				if(currentDirection != direction.down) {
+					currentDirection = direction.up;
+				}
+				return false;
+			}
+
+			@Override
+			protected boolean onSwipeDown() {
+				previousDirection = currentDirection;
+				if(currentDirection != direction.up) {
+					currentDirection = direction.down;
+				}
+				return false;
+			}
+
+			@Override
+			protected boolean onSwipeLeft() {
+				previousDirection = currentDirection;
+				if(currentDirection != direction.right) {
+					currentDirection = direction.left;
+				}
+				return false;
+			}
+
+			@Override
+			protected boolean onSwipeRight() {
+				previousDirection = currentDirection;
+				if(currentDirection != direction.left) {
+					currentDirection = direction.right;
+				}
+				return false;
+			}
+	    };
+
+	    this.mSGDA.setEnabled(true);
+
+	}
 	@Override
 	public EngineOptions onCreateEngineOptions() {
 		
@@ -91,10 +147,6 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 		return new EngineOptions(true, ScreenOrientation.PORTRAIT_FIXED, new RatioResolutionPolicy(CAMERA_WIDTH, CAMERA_HEIGHT), camera);
 	}
 
-	@Override
-	public void onCreateResources() {
-
-	}
 
 	@Override
 	public Scene onCreateScene() {
@@ -102,50 +154,8 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 
 		final Scene scene = new Scene();
 		scene.setBackground(new Background(0.09804f, 0.6274f, 0.8784f));
-		scene.setOnSceneTouchListener(this);
-
-		SurfaceGestureDetector surfaceGestureDetector = new SurfaceGestureDetector(
-				this) {
-
-			@Override
-			protected boolean onSwipeUp() {
-				System.out.println("onSwipeUp");
-				return true;
-			}
-
-			@Override
-			protected boolean onSwipeRight() {
-				System.out.println("onSwipeRight");
-				return true; 
-			}
-
-			@Override
-			protected boolean onSwipeLeft() {
-				System.out.println("onSwipeLeft");
-				return true;
-			}
-
-			@Override
-			protected boolean onSwipeDown() {
-				System.out.println("onSwipeDown");
-				return true;
-			}
-
-			@Override
-			protected boolean onSingleTap() {
-				System.out.println("onSingleTap");
-				return true;
-			}
-
-			@Override
-			protected boolean onDoubleTap() {
-				System.out.println("onDoubleTap");
-				return true;
-			}
-		};
-		
-		 //surfaceGestureDetector.setEnabled(true);
-		 //scene.setOnSceneTouchListener(surfaceGestureDetector);
+		//scene.setOnSceneTouchListener(this);
+		scene.setOnSceneTouchListener(mSGDA);
 		
 		final Random random = new Random(RANDOM_SEED);
 		final VertexBufferObjectManager vertexBufferObjectManager = this.getVertexBufferObjectManager();
@@ -167,10 +177,11 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 					lines.add(new Line(x_start, y_start, x_end, y_end,
 							lineWidth, vertexBufferObjectManager));
 					Line lineAdded = lines.get(lines.size() - 1);
+					lineAdded.setColor(Color.BLACK);
 					scene.attachChild(lineAdded);
 				}
 				// direction changed
-				else if (previous_isHorizontal != isHorizontal) {
+				else if (previousDirection != currentDirection) {
 					Line lastLine = lines.get(lines.size() - 1);
 					x_start = lastLine.getX2();
 					y_start = lastLine.getY2();
@@ -183,13 +194,21 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 				}
 				// moving in same direction
 				else {
-					if (isHorizontal) {
+					switch(currentDirection) {
+					case right: 
 						x_end = (float) (x_end + 1);
-					}
-					else {
+						break;
+					case left:
+						x_end = (float) (x_end - 1);
+						break;
+					case down:
 						y_end = (float) (y_end + 1);
-					}
-
+						break;
+					case up:
+						y_end = (float) (y_end - 1);
+						break;
+					}			
+				
 					// pop the line from stack and scene
 					scene.detachChild(lines.get(lines.size() - 1));
 					lines.remove(lines.get(lines.size() - 1));
@@ -199,6 +218,7 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 							lineWidth, vertexBufferObjectManager));
 					scene.attachChild(lines.get(lines.size() - 1));
 				}
+				previousDirection = currentDirection;
 			}
 		});		
 		return scene;
@@ -206,15 +226,6 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 	
 	@Override
 	public boolean onSceneTouchEvent(final Scene pScene, final TouchEvent pSceneTouchEvent) {
-		previous_isHorizontal = isHorizontal;
-		if (pSceneTouchEvent.isActionDown()) {
-			if (isHorizontal == false)
-				isHorizontal = true;
-			else
-				isHorizontal = false;
-
-			return true;
-		}
 		return false;
 	}
 	
@@ -263,6 +274,11 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 
 	@Override
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
+		// TODO Auto-generated method stub
+		
+	}
+	@Override
+	protected void onCreateResources() {
 		// TODO Auto-generated method stub
 		
 	}
