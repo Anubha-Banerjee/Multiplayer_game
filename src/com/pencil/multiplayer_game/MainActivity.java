@@ -1,5 +1,7 @@
 package com.pencil.multiplayer_game;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
@@ -13,12 +15,21 @@ import org.andengine.entity.primitive.Line;
 import org.andengine.entity.scene.IOnSceneTouchListener;
 import org.andengine.entity.scene.Scene;
 import org.andengine.entity.scene.background.Background;
+import org.andengine.entity.sprite.Sprite;
 import org.andengine.entity.util.FPSLogger;
 import org.andengine.input.touch.TouchEvent;
 import org.andengine.input.touch.detector.SurfaceGestureDetector;
 import org.andengine.input.touch.detector.SurfaceGestureDetectorAdapter;
+import org.andengine.opengl.texture.ITexture;
+import org.andengine.opengl.texture.TextureOptions;
+import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlasTextureRegionFactory;
+import org.andengine.opengl.texture.atlas.bitmap.BuildableBitmapTextureAtlas;
+import org.andengine.opengl.texture.bitmap.BitmapTexture;
+import org.andengine.opengl.texture.region.ITextureRegion;
+import org.andengine.opengl.texture.region.TextureRegionFactory;
 import org.andengine.opengl.vbo.VertexBufferObjectManager;
 import org.andengine.ui.activity.SimpleBaseGameActivity;
+import org.andengine.util.adt.io.in.IInputStreamOpener;
 import org.andengine.util.color.Color;
 
 import android.graphics.Rect;
@@ -31,38 +42,55 @@ import android.util.Log;
 import android.view.Surface;
 import android.view.WindowManager;
 
-
-public class MainActivity  extends SimpleBaseGameActivity implements SensorEventListener, IOnSceneTouchListener{
+public class MainActivity extends SimpleBaseGameActivity implements
+		SensorEventListener, IOnSceneTouchListener {
 	// ===========================================================
 	// Constants
 	// ===========================================================
 
-	/* Initializing the Random generator produces a comparable result over different versions. */
+	/*
+	 * Initializing the Random generator produces a comparable result over
+	 * different versions.
+	 */
 	private static final long RANDOM_SEED = 1234567890;
 
 	private static final int CAMERA_WIDTH = 540;
 	private static final int CAMERA_HEIGHT = 960;
-	public static float sensorAx = 0.0f; 
-	public static float sensorAy = 0.0f;   
+	public static float sensorAx = 0.0f;
+	public static float sensorAy = 0.0f;
 	public static float sensorAz = 0.0f;
 	static int screenRotation;
 	private SensorManager mSensorManager;
-	float ax=0, ay=0, az=0;	
+	float ax = 0, ay = 0, az = 0;
 	double distanceX = 0, distanceY = 0;
+	float x_start = 0.2f * CAMERA_WIDTH;
+	float y_start = 0.2f * CAMERA_HEIGHT;
+	float y_end = 0.2f * CAMERA_HEIGHT;
+	float x_end = x_start;
+	float lineWidth = 2;
+	Sprite pencil;
 
 	private static final int LINE_COUNT = 100;
-	
-	static double vx=0;
+
+	static double vx = 0;
 	// speed
-	static double vy=0;
+	static double vy = 0;
 	static double constantFriction = 0;
 	Rect r;
 
-	private enum direction {left, right, up, down};
-	private direction currentDirection=direction.down, previousDirection=currentDirection; 
-	private SurfaceGestureDetector  mSGDA;
+	private enum direction {
+		left, right, up, down
+	};
+
+	private direction currentDirection = direction.down,
+			previousDirection = currentDirection;
+	private SurfaceGestureDetector mSGDA;
 	// acceleration
-	public static final float DistanceScale = 10;	
+	public static final float DistanceScale = 10;
+
+	private ITexture pencilTexture;
+	private ITextureRegion pencilTextureRegion;
+
 	// ===========================================================
 	// Fields
 	// ===========================================================
@@ -80,11 +108,11 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 	// ===========================================================
 	@Override
 	protected void onCreate(final Bundle pSavedInstanceState) {
-	    super.onCreate(pSavedInstanceState);
+		super.onCreate(pSavedInstanceState);
 
-	    this.mSGDA = new SurfaceGestureDetector (null) {
-	    	
-	    	@Override
+		this.mSGDA = new SurfaceGestureDetector(null) {
+
+			@Override
 			protected boolean onSingleTap() {
 				// TODO Auto-generated method stub
 				return false;
@@ -99,7 +127,7 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 			@Override
 			protected boolean onSwipeUp() {
 				previousDirection = currentDirection;
-				if(currentDirection != direction.down) {
+				if (currentDirection != direction.down) {
 					currentDirection = direction.up;
 				}
 				return false;
@@ -108,7 +136,7 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 			@Override
 			protected boolean onSwipeDown() {
 				previousDirection = currentDirection;
-				if(currentDirection != direction.up) {
+				if (currentDirection != direction.up) {
 					currentDirection = direction.down;
 				}
 				return false;
@@ -117,7 +145,7 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 			@Override
 			protected boolean onSwipeLeft() {
 				previousDirection = currentDirection;
-				if(currentDirection != direction.right) {
+				if (currentDirection != direction.right) {
 					currentDirection = direction.left;
 				}
 				return false;
@@ -126,58 +154,63 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 			@Override
 			protected boolean onSwipeRight() {
 				previousDirection = currentDirection;
-				if(currentDirection != direction.left) {
+				if (currentDirection != direction.left) {
 					currentDirection = direction.right;
 				}
 				return false;
 			}
-	    };
+		};
 
-	    this.mSGDA.setEnabled(true);
+		this.mSGDA.setEnabled(true);
 
 	}
+
 	@Override
 	public EngineOptions onCreateEngineOptions() {
-		
-		mSensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);  
+
+		mSensorManager = (SensorManager) getSystemService(SENSOR_SERVICE);
 		getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-		// don't want automatic orientation change 
+		// don't want automatic orientation change
 		final Camera camera = new Camera(0, 0, CAMERA_WIDTH, CAMERA_HEIGHT);
 
-		return new EngineOptions(true, ScreenOrientation.PORTRAIT_FIXED, new RatioResolutionPolicy(CAMERA_WIDTH, CAMERA_HEIGHT), camera);
+		return new EngineOptions(true, ScreenOrientation.PORTRAIT_FIXED,
+				new RatioResolutionPolicy(CAMERA_WIDTH, CAMERA_HEIGHT), camera);
 	}
-
 
 	@Override
 	public Scene onCreateScene() {
-		this.mEngine.registerUpdateHandler(new FPSLogger());
 
+		this.mEngine.registerUpdateHandler(new FPSLogger());
+		final Color gray = new Color(0.5f,0.5f,0.5f);
 		final Scene scene = new Scene();
-		scene.setBackground(new Background(0.09804f, 0.6274f, 0.8784f));
-		//scene.setOnSceneTouchListener(this);
+		scene.setBackground(new Background(1,1,1));
+		// scene.setOnSceneTouchListener(this);
 		scene.setOnSceneTouchListener(mSGDA);
-		
+
 		final Random random = new Random(RANDOM_SEED);
-		final VertexBufferObjectManager vertexBufferObjectManager = this.getVertexBufferObjectManager();
+		final VertexBufferObjectManager vertexBufferObjectManager = this
+				.getVertexBufferObjectManager();
+		
+
+		pencil = new Sprite(x_end, y_end,
+				this.pencilTextureRegion, this.getVertexBufferObjectManager());		
+		scene.attachChild(pencil);
 		scene.registerUpdateHandler(new IUpdateHandler() {
-			 float x_start = 0.2f * CAMERA_WIDTH;		
-			 float y_start = 0.2f  * CAMERA_HEIGHT;
-			 float y_end = 0.2f * CAMERA_HEIGHT;
-			 float x_end = x_start;
-			 float lineWidth = 2 * 5;		
-			 List<Line> lines = new ArrayList<Line>();
-			
-			float x = 100 ,y = 100;
+
+			List<Line> lines = new ArrayList<Line>();
+
+			float x = 100, y = 100;
+
 			public void reset() {
 			}
+
 			// main game loop
-			public void onUpdate(float pSecondsElapsed) {					
+			public void onUpdate(float pSecondsElapsed) {
 				// add the first line
 				if (lines.size() == 0) {
 					lines.add(new Line(x_start, y_start, x_end, y_end,
 							lineWidth, vertexBufferObjectManager));
 					Line lineAdded = lines.get(lines.size() - 1);
-					lineAdded.setColor(Color.BLACK);
 					scene.attachChild(lineAdded);
 				}
 				// direction changed
@@ -190,84 +223,95 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 					lines.add(new Line(x_start, y_start, x_end, y_end,
 							lineWidth, vertexBufferObjectManager));
 					Line lineAdded = lines.get(lines.size() - 1);
+					lineAdded.setColor(gray);
 					scene.attachChild(lineAdded);
 				}
 				// moving in same direction
 				else {
-					switch(currentDirection) {
-					case right: 
-						x_end = (float) (x_end + 1);
+					switch (currentDirection) {
+					case right:
+						x_end = (float) (x_end + 2);
 						break;
 					case left:
-						x_end = (float) (x_end - 1);
+						x_end = (float) (x_end - 2);
 						break;
 					case down:
-						y_end = (float) (y_end + 1);
+						y_end = (float) (y_end + 2);
 						break;
 					case up:
-						y_end = (float) (y_end - 1);
+						y_end = (float) (y_end - 2);
 						break;
-					}			
-				
+					}
+					pencil.setX(x_end);
+					pencil.setY(y_end-pencil.getHeight());
 					// pop the line from stack and scene
 					scene.detachChild(lines.get(lines.size() - 1));
 					lines.remove(lines.get(lines.size() - 1));
 
 					// push a new longer line on stack and scene
-					lines.add(new Line(x_start, y_start, x_end, y_end,
-							lineWidth, vertexBufferObjectManager));
+					Line longerLine = new Line(x_start, y_start, x_end, y_end,
+							lineWidth, vertexBufferObjectManager);
+					lines.add(longerLine);
+					longerLine.setColor(gray);
 					scene.attachChild(lines.get(lines.size() - 1));
 				}
 				previousDirection = currentDirection;
+				scene.detachChild(pencil);
+				scene.attachChild(pencil);
 			}
-		});		
-		return scene;
-	}	
+		});
 	
+		return scene;
+	}
+
 	@Override
-	public boolean onSceneTouchEvent(final Scene pScene, final TouchEvent pSceneTouchEvent) {
+	public boolean onSceneTouchEvent(final Scene pScene,
+			final TouchEvent pSceneTouchEvent) {
 		return false;
 	}
-	
+
 	@Override
 	public void onSensorChanged(SensorEvent sensorEvent) {
 		// TODO Auto-generated method stub
-		if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) 
-		{					
+		if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
 			az = sensorEvent.values[2];
 			// figure out correct ax, ay depending on orientation
 			// cross fingers and hope this will work on all devices
-			// see http://android-developers.blogspot.in/2010/09/one-screen-turn-deserves-another.html for details
-			switch(screenRotation)
-			{
-                case Surface.ROTATION_0:
-                    ax = -sensorEvent.values[0];
-                    ay = sensorEvent.values[1];
-                    break;
-                default:
-                    ax = sensorEvent.values[1];
-                    ay = sensorEvent.values[0];
-                    break	;					
-			}		
-			
-			// low pass filter
-			final float alpha = 0.5f; 
-			sensorAx = alpha * sensorAx + (1 - alpha) * ax;
-			sensorAy = alpha * sensorAy + (1 - alpha) * ay;	
-			sensorAz = alpha * sensorAz + (1 - alpha) * az;
-			    	   
-		}	
-	}
-	protected void onResume() { 
-        super.onResume();      
-        mSensorManager.registerListener(this, mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER), SensorManager.SENSOR_DELAY_NORMAL);
-    }
+			// see
+			// http://android-developers.blogspot.in/2010/09/one-screen-turn-deserves-another.html
+			// for details
+			switch (screenRotation) {
+			case Surface.ROTATION_0:
+				ax = -sensorEvent.values[0];
+				ay = sensorEvent.values[1];
+				break;
+			default:
+				ax = sensorEvent.values[1];
+				ay = sensorEvent.values[0];
+				break;
+			}
 
-    protected void onPause() {
-        super.onPause();
-        mSensorManager.unregisterListener(this);
-    }
-    
+			// low pass filter
+			final float alpha = 0.5f;
+			sensorAx = alpha * sensorAx + (1 - alpha) * ax;
+			sensorAy = alpha * sensorAy + (1 - alpha) * ay;
+			sensorAz = alpha * sensorAz + (1 - alpha) * az;
+
+		}
+	}
+
+	protected void onResume() {
+		super.onResume();
+		mSensorManager.registerListener(this,
+				mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER),
+				SensorManager.SENSOR_DELAY_NORMAL);
+	}
+
+	protected void onPause() {
+		super.onPause();
+		mSensorManager.unregisterListener(this);
+	}
+
 	// ===========================================================
 	// Methods
 	// ===========================================================
@@ -275,12 +319,36 @@ public class MainActivity  extends SimpleBaseGameActivity implements SensorEvent
 	@Override
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
 		// TODO Auto-generated method stub
-		
+
 	}
+
 	@Override
 	protected void onCreateResources() {
-		// TODO Auto-generated method stub
-		
+		BitmapTextureAtlasTextureRegionFactory.setAssetBasePath("sprites/");
+		this.pencilTexture = new BuildableBitmapTextureAtlas(
+				this.getTextureManager(), 1024, 512, TextureOptions.NEAREST);
+		this.pencilTexture = new BuildableBitmapTextureAtlas(
+				this.getTextureManager(), 2048, 1024, TextureOptions.NEAREST);
+
+		// load the textures
+		try {
+			// load the ship texture
+			this.pencilTexture = new BitmapTexture(this.getTextureManager(),
+					new IInputStreamOpener() {
+						@Override
+						public InputStream open() throws IOException {
+							return getAssets().open("sprites/pencil.png");
+						}
+					});
+			this.pencilTexture.load();
+			this.pencilTextureRegion = TextureRegionFactory
+					.extractFromTexture(this.pencilTexture);
+
+		} catch (IOException e1) {
+			Log.e("exception: :", "Exception loading textures");
+			e1.printStackTrace();
+		}
+
 	}
 
 	// ===========================================================
