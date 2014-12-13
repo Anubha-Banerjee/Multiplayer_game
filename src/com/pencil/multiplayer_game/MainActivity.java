@@ -38,6 +38,7 @@ import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.os.Bundle;
+import android.support.v7.appcompat.R.color;
 import android.util.Log;
 import android.view.Surface;
 import android.view.WindowManager;
@@ -253,8 +254,18 @@ public class MainActivity extends SimpleBaseGameActivity implements
 							lineWidth, vertexBufferObjectManager);
 					lines.add(longerLine);
 					longerLine.setColor(gray);
-					scene.attachChild(lines.get(lines.size() - 1));
+					scene.attachChild(longerLine);
+					
 				}
+
+				// check collision of lines
+				for(int i = 0; i < lines.size()-2; i++) {
+					Line currentLine = lines.get(lines.size() - 1);
+					if(currentLine.collidesWith(lines.get(i))) {
+						currentLine.setColor(1,0,0);
+					}
+				}
+				
 				previousDirection = currentDirection;
 				scene.detachChild(pencil);
 				scene.attachChild(pencil);
