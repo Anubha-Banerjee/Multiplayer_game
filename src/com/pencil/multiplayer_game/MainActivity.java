@@ -12,25 +12,44 @@ import org.andengine.engine.options.EngineOptions;
 import org.andengine.engine.options.ScreenOrientation;
 import org.andengine.engine.options.resolutionpolicy.RatioResolutionPolicy;
 import org.andengine.entity.primitive.Line;
+import org.andengine.entity.primitive.Rectangle;
 import org.andengine.entity.scene.IOnSceneTouchListener;
 import org.andengine.entity.scene.Scene;
 import org.andengine.entity.scene.background.Background;
+import org.andengine.entity.sprite.AnimatedSprite;
 import org.andengine.entity.sprite.Sprite;
 import org.andengine.entity.util.FPSLogger;
+import org.andengine.extension.physics.box2d.PhysicsConnector;
+import org.andengine.extension.physics.box2d.PhysicsFactory;
+import org.andengine.extension.physics.box2d.PhysicsWorld;
+import org.andengine.extension.physics.box2d.util.Vector2Pool;
+import org.andengine.input.sensor.acceleration.AccelerationData;
+import org.andengine.input.sensor.acceleration.IAccelerationListener;
 import org.andengine.input.touch.TouchEvent;
 import org.andengine.input.touch.detector.SurfaceGestureDetector;
 import org.andengine.input.touch.detector.SurfaceGestureDetectorAdapter;
 import org.andengine.opengl.texture.ITexture;
 import org.andengine.opengl.texture.TextureOptions;
+import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlas;
 import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlasTextureRegionFactory;
 import org.andengine.opengl.texture.atlas.bitmap.BuildableBitmapTextureAtlas;
+import org.andengine.opengl.texture.atlas.bitmap.source.IBitmapTextureAtlasSource;
+import org.andengine.opengl.texture.atlas.buildable.builder.BlackPawnTextureAtlasBuilder;
+import org.andengine.opengl.texture.atlas.buildable.builder.ITextureAtlasBuilder.TextureAtlasBuilderException;
 import org.andengine.opengl.texture.bitmap.BitmapTexture;
 import org.andengine.opengl.texture.region.ITextureRegion;
 import org.andengine.opengl.texture.region.TextureRegionFactory;
+import org.andengine.opengl.texture.region.TiledTextureRegion;
 import org.andengine.opengl.vbo.VertexBufferObjectManager;
 import org.andengine.ui.activity.SimpleBaseGameActivity;
 import org.andengine.util.adt.io.in.IInputStreamOpener;
 import org.andengine.util.color.Color;
+import org.andengine.util.debug.Debug;
+
+import com.badlogic.gdx.math.Vector2;
+import com.badlogic.gdx.physics.box2d.Body;
+import com.badlogic.gdx.physics.box2d.FixtureDef;
+import com.badlogic.gdx.physics.box2d.BodyDef.BodyType;
 
 import android.graphics.Rect;
 import android.hardware.Sensor;
@@ -44,7 +63,7 @@ import android.view.Surface;
 import android.view.WindowManager;
 
 public class MainActivity extends SimpleBaseGameActivity implements
-		SensorEventListener, IOnSceneTouchListener {
+		SensorEventListener, IAccelerationListener, IOnSceneTouchListener {
 	// ===========================================================
 	// Constants
 	// ===========================================================
@@ -70,6 +89,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	float x_end = x_start;
 	float lineWidth = 2;
 	Sprite pencil;
+	boolean isTouch = false;
 
 	private static final int LINE_COUNT = 100;
 
@@ -91,7 +111,12 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 	private ITexture pencilTexture;
 	private ITextureRegion pencilTextureRegion;
+	private TiledTextureRegion penTextureRegion;
+	private PhysicsWorld mPhysicsWorld;
+	private BuildableBitmapTextureAtlas mBitmapTextureAtlas;
+	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(0, 0, 0);
 
+	// 
 	// ===========================================================
 	// Fields
 	// ===========================================================
@@ -185,17 +210,50 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		final Color gray = new Color(0.5f,0.5f,0.5f);
 		final Scene scene = new Scene();
 		scene.setBackground(new Background(1,1,1));
+		this.mPhysicsWorld = new PhysicsWorld(new Vector2(0, SensorManager.GRAVITY_EARTH), false);
 		// scene.setOnSceneTouchListener(this);
 		scene.setOnSceneTouchListener(mSGDA);
 
 		final Random random = new Random(RANDOM_SEED);
 		final VertexBufferObjectManager vertexBufferObjectManager = this
 				.getVertexBufferObjectManager();
-		
 
+		final Rectangle ground = new Rectangle(0, CAMERA_HEIGHT - 2, CAMERA_WIDTH, 2, vertexBufferObjectManager);
+		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2, vertexBufferObjectManager);
+		final Rectangle left = new Rectangle(0, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
+		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
+
+		final FixtureDef wallFixtureDef = PhysicsFactory.createFixtureDef(0, 0, 0);
+		PhysicsFactory.createBoxBody(this.mPhysicsWorld, ground, BodyType.StaticBody, wallFixtureDef);
+		PhysicsFactory.createBoxBody(this.mPhysicsWorld, roof, BodyType.StaticBody, wallFixtureDef);
+		PhysicsFactory.createBoxBody(this.mPhysicsWorld, left, BodyType.StaticBody, wallFixtureDef);
+		PhysicsFactory.createBoxBody(this.mPhysicsWorld, right, BodyType.StaticBody, wallFixtureDef);
+
+		scene.attachChild(ground);
+		scene.attachChild(roof);
+		scene.attachChild(left);
+		scene.attachChild(right);	
+		
+		final Sprite pen;
+		final Body penBody;
+		
+		pen = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
+		penBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, pen, BodyType.DynamicBody, FIXTURE_DEF);
+		penBody.setLinearDamping(1.3f);
+		if(!isTouch)
+			scene.attachChild(pen);
+		
+		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(pen, penBody, true, true));
+		scene.registerUpdateHandler(this.mPhysicsWorld);
+		
+		
+	
 		pencil = new Sprite(x_end, y_end,
-				this.pencilTextureRegion, this.getVertexBufferObjectManager());		
-		scene.attachChild(pencil);
+				this.pencilTextureRegion, this.getVertexBufferObjectManager());
+		
+		if(isTouch) {
+			scene.attachChild(pencil);
+		}
 		scene.registerUpdateHandler(new IUpdateHandler() {
 
 			List<Line> lines = new ArrayList<Line>();
@@ -207,6 +265,29 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 			// main game loop
 			public void onUpdate(float pSecondsElapsed) {
+				
+				if(!isTouch) {
+					Vector2 linearVel = penBody.getLinearVelocity();
+					previousDirection = currentDirection;
+					if(Math.abs(linearVel.x) > Math.abs(linearVel.y)) {
+						penBody.setLinearVelocity(linearVel.x, 0);
+						if(linearVel.x > 0) {
+							currentDirection = direction.right;
+						}
+						else {
+							currentDirection = direction.left;
+						}
+					}
+					else {
+						penBody.setLinearVelocity(0, linearVel.y);
+						if(linearVel.y > 0) {
+							currentDirection = direction.down;
+						}
+						else {
+							currentDirection = direction.up;
+						}
+					}
+				}
 				// add the first line
 				if (lines.size() == 0) {
 					lines.add(new Line(x_start, y_start, x_end, y_end,
@@ -229,22 +310,31 @@ public class MainActivity extends SimpleBaseGameActivity implements
 				}
 				// moving in same direction
 				else {
-					switch (currentDirection) {
-					case right:
-						x_end = (float) (x_end + 2);
-						break;
-					case left:
-						x_end = (float) (x_end - 2);
-						break;
-					case down:
-						y_end = (float) (y_end + 2);
-						break;
-					case up:
-						y_end = (float) (y_end - 2);
-						break;
+					if(!isTouch) {
+						x_end = pen.getX();
+						y_end = pen.getY()+pen.getHeight();						
 					}
-					pencil.setX(x_end);
-					pencil.setY(y_end-pencil.getHeight());
+					if(isTouch) {
+						switch (currentDirection) { 
+						case right:
+							x_end = (float) (x_end + 2);
+							break;
+						case left:
+							x_end = (float) (x_end - 2);
+							break;
+						case down:
+							y_end = (float) (y_end + 2);
+							break;
+						case up:
+							y_end = (float) (y_end - 2);
+							break;
+						}
+						pencil.setX(x_end);
+						pencil.setY(y_end-pencil.getHeight());
+						scene.detachChild(pencil);
+						scene.attachChild(pencil);
+					}
+					
 					// pop the line from stack and scene
 					scene.detachChild(lines.get(lines.size() - 1));
 					lines.remove(lines.get(lines.size() - 1));
@@ -264,11 +354,8 @@ public class MainActivity extends SimpleBaseGameActivity implements
 					if(currentLine.collidesWith(lines.get(i))) {
 						currentLine.setColor(1,0,0);
 					}
-				}
-				
-				previousDirection = currentDirection;
-				scene.detachChild(pencil);
-				scene.attachChild(pencil);
+				}				
+				previousDirection = currentDirection;				
 			}
 		});
 	
@@ -281,35 +368,6 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		return false;
 	}
 
-	@Override
-	public void onSensorChanged(SensorEvent sensorEvent) {
-		// TODO Auto-generated method stub
-		if (sensorEvent.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-			az = sensorEvent.values[2];
-			// figure out correct ax, ay depending on orientation
-			// cross fingers and hope this will work on all devices
-			// see
-			// http://android-developers.blogspot.in/2010/09/one-screen-turn-deserves-another.html
-			// for details
-			switch (screenRotation) {
-			case Surface.ROTATION_0:
-				ax = -sensorEvent.values[0];
-				ay = sensorEvent.values[1];
-				break;
-			default:
-				ax = sensorEvent.values[1];
-				ay = sensorEvent.values[0];
-				break;
-			}
-
-			// low pass filter
-			final float alpha = 0.5f;
-			sensorAx = alpha * sensorAx + (1 - alpha) * ax;
-			sensorAy = alpha * sensorAy + (1 - alpha) * ay;
-			sensorAz = alpha * sensorAz + (1 - alpha) * az;
-
-		}
-	}
 
 	protected void onResume() {
 		super.onResume();
@@ -336,10 +394,24 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	@Override
 	protected void onCreateResources() {
 		BitmapTextureAtlasTextureRegionFactory.setAssetBasePath("sprites/");
+		this.mBitmapTextureAtlas = new BuildableBitmapTextureAtlas(this.getTextureManager(), 512, 512, TextureOptions.NEAREST);
+		
+		this.penTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "pencil.png", 1, 1); // 64x32
+
+		try {
+			this.mBitmapTextureAtlas.build(new BlackPawnTextureAtlasBuilder<IBitmapTextureAtlasSource, BitmapTextureAtlas>(0, 0, 1));
+			this.mBitmapTextureAtlas.load();
+			
+			this.mBitmapTextureAtlas.build(new BlackPawnTextureAtlasBuilder<IBitmapTextureAtlasSource, BitmapTextureAtlas>(0, 0, 1));
+			this.mBitmapTextureAtlas.load();
+			
+			
+		} catch (TextureAtlasBuilderException e) {
+			Debug.e(e);
+		}
+		
 		this.pencilTexture = new BuildableBitmapTextureAtlas(
-				this.getTextureManager(), 1024, 512, TextureOptions.NEAREST);
-		this.pencilTexture = new BuildableBitmapTextureAtlas(
-				this.getTextureManager(), 2048, 1024, TextureOptions.NEAREST);
+				this.getTextureManager(), 512, 512, TextureOptions.NEAREST);
 
 		// load the textures
 		try {
@@ -360,6 +432,35 @@ public class MainActivity extends SimpleBaseGameActivity implements
 			e1.printStackTrace();
 		}
 
+	}
+	@Override
+	public void onAccelerationChanged(final AccelerationData pAccelerationData) {
+		final Vector2 gravity = Vector2Pool.obtain(pAccelerationData.getX(), pAccelerationData.getY());
+		this.mPhysicsWorld.setGravity(gravity);
+		Vector2Pool.recycle(gravity);
+	}
+	@Override
+	public void onResumeGame() {
+		super.onResumeGame();
+		this.enableAccelerationSensor(this);
+	}
+
+	@Override
+	public void onPauseGame() {
+		super.onPauseGame();
+		this.disableAccelerationSensor();
+	}
+
+	@Override
+	public void onAccelerationAccuracyChanged(AccelerationData pAccelerationData) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent event) {
+		// TODO Auto-generated method stub
+		
 	}
 
 	// ===========================================================
