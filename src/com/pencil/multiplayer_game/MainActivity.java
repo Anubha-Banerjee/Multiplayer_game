@@ -89,8 +89,10 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	float x_end = x_start;
 	float lineWidth = 2;
 	Sprite pencil;
+	Sprite pen;
+	Body penBody;	
 	boolean isTouch = false;
-
+	Scene scene;
 	private static final int LINE_COUNT = 100;
 
 	static double vx = 0;
@@ -98,7 +100,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	static double vy = 0;
 	static double constantFriction = 0;
 	Rect r;
-
+	List<Line> lines = new ArrayList<Line>();
 	private enum direction {
 		left, right, up, down
 	};
@@ -114,7 +116,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	private TiledTextureRegion penTextureRegion;
 	private PhysicsWorld mPhysicsWorld;
 	private BuildableBitmapTextureAtlas mBitmapTextureAtlas;
-	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(0, 0, 0);
+	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(1, 0, 1);
 
 	// 
 	// ===========================================================
@@ -146,7 +148,16 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 			@Override
 			protected boolean onDoubleTap() {
-				// TODO Auto-generated method stub
+				if(isTouch) {
+					isTouch = false;					
+					scene.attachChild(pen);
+					scene.detachChild(pencil);
+				}
+				else {
+					isTouch = true;
+					scene.attachChild(pencil);
+					scene.detachChild(pen);					
+				}
 				return false;
 			}
 
@@ -208,7 +219,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 		this.mEngine.registerUpdateHandler(new FPSLogger());
 		final Color gray = new Color(0.5f,0.5f,0.5f);
-		final Scene scene = new Scene();
+		scene = new Scene();
 		scene.setBackground(new Background(1,1,1));
 		this.mPhysicsWorld = new PhysicsWorld(new Vector2(0, SensorManager.GRAVITY_EARTH), false);
 		// scene.setOnSceneTouchListener(this);
@@ -233,21 +244,15 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		scene.attachChild(roof);
 		scene.attachChild(left);
 		scene.attachChild(right);	
-		
-		final Sprite pen;
-		final Body penBody;
-		
+				
 		pen = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
 		penBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, pen, BodyType.DynamicBody, FIXTURE_DEF);
-		penBody.setLinearDamping(1.3f);
-		if(!isTouch)
-			scene.attachChild(pen);
+		penBody.setLinearDamping(1);
+	
 		
 		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(pen, penBody, true, true));
 		scene.registerUpdateHandler(this.mPhysicsWorld);
 		
-		
-	
 		pencil = new Sprite(x_end, y_end,
 				this.pencilTextureRegion, this.getVertexBufferObjectManager());
 		
@@ -256,34 +261,31 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		}
 		scene.registerUpdateHandler(new IUpdateHandler() {
 
-			List<Line> lines = new ArrayList<Line>();
-
-			float x = 100, y = 100;
-
+			
 			public void reset() {
 			}
 
 			// main game loop
 			public void onUpdate(float pSecondsElapsed) {
 				
-				if(!isTouch) {
+				if(!isTouch) {					
 					Vector2 linearVel = penBody.getLinearVelocity();
 					previousDirection = currentDirection;
 					if(Math.abs(linearVel.x) > Math.abs(linearVel.y)) {
 						penBody.setLinearVelocity(linearVel.x, 0);
-						if(linearVel.x > 0) {
+						if(linearVel.x > 0 && currentDirection != direction.left) {
 							currentDirection = direction.right;
 						}
-						else {
+						else if(linearVel.x < 0 && currentDirection != direction.right) {
 							currentDirection = direction.left;
 						}
 					}
-					else {
+					else {						
 						penBody.setLinearVelocity(0, linearVel.y);
-						if(linearVel.y > 0) {
+						if(linearVel.y > 0 && currentDirection != direction.up)  {
 							currentDirection = direction.down;
 						}
-						else {
+						else if(linearVel.y < 0 && currentDirection != direction.down) {
 							currentDirection = direction.up;
 						}
 					}
@@ -312,7 +314,9 @@ public class MainActivity extends SimpleBaseGameActivity implements
 				else {
 					if(!isTouch) {
 						x_end = pen.getX();
-						y_end = pen.getY()+pen.getHeight();						
+						y_end = pen.getY()+ pen.getHeight();
+						scene.detachChild(pen);
+						scene.attachChild(pen);
 					}
 					if(isTouch) {
 						switch (currentDirection) { 
@@ -332,7 +336,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 						pencil.setX(x_end);
 						pencil.setY(y_end-pencil.getHeight());
 						scene.detachChild(pencil);
-						scene.attachChild(pencil);
+						scene.attachChild(pencil);						
 					}
 					
 					// pop the line from stack and scene
