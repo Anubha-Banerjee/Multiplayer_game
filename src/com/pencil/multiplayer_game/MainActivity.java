@@ -116,7 +116,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	private TiledTextureRegion penTextureRegion;
 	private PhysicsWorld mPhysicsWorld;
 	private BuildableBitmapTextureAtlas mBitmapTextureAtlas;
-	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(1, 0, 1);
+	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(0.1f, 0, 1);
 
 	// 
 	// ===========================================================
@@ -143,6 +143,11 @@ public class MainActivity extends SimpleBaseGameActivity implements
 			@Override
 			protected boolean onSingleTap() {
 				// TODO Auto-generated method stub
+				for(int i = 0; i < lines.size(); i++) {
+					scene.detachChild(lines.get(i));
+				}
+				if(lines.size() > 0)
+					lines.clear();
 				return false;
 			}
 
@@ -228,11 +233,16 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		final Random random = new Random(RANDOM_SEED);
 		final VertexBufferObjectManager vertexBufferObjectManager = this
 				.getVertexBufferObjectManager();
+		
+		pen = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
+		penBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, pen, BodyType.DynamicBody, FIXTURE_DEF);
+		penBody.setLinearDamping(12);
+		penBody.setGravityScale(20);
 
 		final Rectangle ground = new Rectangle(0, CAMERA_HEIGHT - 2, CAMERA_WIDTH, 2, vertexBufferObjectManager);
-		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2, vertexBufferObjectManager);
+		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2 - pen.getWidth(), vertexBufferObjectManager);
 		final Rectangle left = new Rectangle(0, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
-		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
+		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2 + pen.getWidth(), 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
 
 		final FixtureDef wallFixtureDef = PhysicsFactory.createFixtureDef(0, 0, 0);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, ground, BodyType.StaticBody, wallFixtureDef);
@@ -244,10 +254,6 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		scene.attachChild(roof);
 		scene.attachChild(left);
 		scene.attachChild(right);	
-				
-		pen = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
-		penBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, pen, BodyType.DynamicBody, FIXTURE_DEF);
-		penBody.setLinearDamping(1);
 	
 		
 		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(pen, penBody, true, true));
@@ -439,7 +445,9 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	}
 	@Override
 	public void onAccelerationChanged(final AccelerationData pAccelerationData) {
-		final Vector2 gravity = Vector2Pool.obtain(pAccelerationData.getX(), pAccelerationData.getY());
+		int accelerationScale = 1;
+		final Vector2 gravity = Vector2Pool.obtain(pAccelerationData.getX()*accelerationScale,
+				pAccelerationData.getY()*accelerationScale);
 		this.mPhysicsWorld.setGravity(gravity);
 		Vector2Pool.recycle(gravity);
 	}
