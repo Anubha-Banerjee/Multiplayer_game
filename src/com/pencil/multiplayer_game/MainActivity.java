@@ -89,8 +89,8 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	float x_end = x_start;
 	float lineWidth = 2;
 	Sprite pencil;
-	Sprite pen;
-	Body penBody;	
+	Sprite animatedPencil;
+	Body pencilPhysicsBody;	
 	boolean isTouch = false;
 	Scene scene;
 	private static final int LINE_COUNT = 100;
@@ -155,13 +155,13 @@ public class MainActivity extends SimpleBaseGameActivity implements
 			protected boolean onDoubleTap() {
 				if(isTouch) {
 					isTouch = false;					
-					scene.attachChild(pen);
+					scene.attachChild(animatedPencil);
 					scene.detachChild(pencil);
 				}
 				else {
 					isTouch = true;
 					scene.attachChild(pencil);
-					scene.detachChild(pen);					
+					scene.detachChild(animatedPencil);					
 				}
 				return false;
 			}
@@ -234,15 +234,15 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		final VertexBufferObjectManager vertexBufferObjectManager = this
 				.getVertexBufferObjectManager();
 		
-		pen = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
-		penBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, pen, BodyType.DynamicBody, FIXTURE_DEF);
-		penBody.setLinearDamping(12);
-		penBody.setGravityScale(20);
-
+		pencil = new Sprite(x_end, y_end,
+				this.pencilTextureRegion, this.getVertexBufferObjectManager());		
+		animatedPencil = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
+		pencilPhysicsBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, animatedPencil, BodyType.KinematicBody, FIXTURE_DEF);
+	
 		final Rectangle ground = new Rectangle(0, CAMERA_HEIGHT - 2, CAMERA_WIDTH, 2, vertexBufferObjectManager);
-		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2 - pen.getWidth(), vertexBufferObjectManager);
+		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2 - animatedPencil.getWidth(), vertexBufferObjectManager);
 		final Rectangle left = new Rectangle(0, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
-		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2 + pen.getWidth(), 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
+		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2 + animatedPencil.getWidth(), 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
 
 		final FixtureDef wallFixtureDef = PhysicsFactory.createFixtureDef(0, 0, 0);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, ground, BodyType.StaticBody, wallFixtureDef);
@@ -256,12 +256,9 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		scene.attachChild(right);	
 	
 		
-		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(pen, penBody, true, true));
+		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(animatedPencil, pencilPhysicsBody, true, true));
 		scene.registerUpdateHandler(this.mPhysicsWorld);
-		
-		pencil = new Sprite(x_end, y_end,
-				this.pencilTextureRegion, this.getVertexBufferObjectManager());
-		
+	
 		if(isTouch) {
 			scene.attachChild(pencil);
 		}
@@ -273,12 +270,12 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 			// main game loop
 			public void onUpdate(float pSecondsElapsed) {
-				
-				if(!isTouch) {					
-					Vector2 linearVel = penBody.getLinearVelocity();
+				// calculate the direction of the line depending upon orientation of phone
+				if(!isTouch) {
+					Vector2 linearVel = mPhysicsWorld.getGravity();
 					previousDirection = currentDirection;
 					if(Math.abs(linearVel.x) > Math.abs(linearVel.y)) {
-						penBody.setLinearVelocity(linearVel.x, 0);
+						pencilPhysicsBody.setLinearVelocity(linearVel.x, 0);
 						if(linearVel.x > 0 && currentDirection != direction.left) {
 							currentDirection = direction.right;
 						}
@@ -287,7 +284,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 						}
 					}
 					else {						
-						penBody.setLinearVelocity(0, linearVel.y);
+						pencilPhysicsBody.setLinearVelocity(0, linearVel.y);
 						if(linearVel.y > 0 && currentDirection != direction.up)  {
 							currentDirection = direction.down;
 						}
@@ -319,10 +316,28 @@ public class MainActivity extends SimpleBaseGameActivity implements
 				// moving in same direction
 				else {
 					if(!isTouch) {
-						x_end = pen.getX();
-						y_end = pen.getY()+ pen.getHeight();
-						scene.detachChild(pen);
-						scene.attachChild(pen);
+						// http://stackoverflow.com/questions/27654118/restricting-movement-of-box2d-body-along-an-axis-in-andengine
+						switch (currentDirection) { 
+						case right:
+							pencilPhysicsBody.setLinearVelocity(mPhysicsWorld.getGravity().x, 0);
+							x_end = animatedPencil.getX();
+							break;
+						case left:
+							pencilPhysicsBody.setLinearVelocity(mPhysicsWorld.getGravity().x, 0);
+							x_end = animatedPencil.getX();
+							break;
+						case down:
+							pencilPhysicsBody.setLinearVelocity(0, mPhysicsWorld.getGravity().y);
+							y_end = animatedPencil.getY()+ animatedPencil.getHeight();
+							break;
+						case up:
+							pencilPhysicsBody.setLinearVelocity(0, mPhysicsWorld.getGravity().y);
+							y_end = animatedPencil.getY()+ animatedPencil.getHeight();
+							break;
+						}
+						
+						scene.detachChild(animatedPencil);
+						scene.attachChild(animatedPencil);
 					}
 					if(isTouch) {
 						switch (currentDirection) { 
@@ -445,7 +460,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	}
 	@Override
 	public void onAccelerationChanged(final AccelerationData pAccelerationData) {
-		int accelerationScale = 1;
+		float accelerationScale = 1.3f;
 		final Vector2 gravity = Vector2Pool.obtain(pAccelerationData.getX()*accelerationScale,
 				pAccelerationData.getY()*accelerationScale);
 		this.mPhysicsWorld.setGravity(gravity);
