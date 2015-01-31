@@ -18,6 +18,7 @@ import org.andengine.entity.scene.Scene;
 import org.andengine.entity.scene.background.Background;
 import org.andengine.entity.sprite.AnimatedSprite;
 import org.andengine.entity.sprite.Sprite;
+import org.andengine.entity.sprite.TiledSprite;
 import org.andengine.entity.util.FPSLogger;
 import org.andengine.extension.physics.box2d.PhysicsConnector;
 import org.andengine.extension.physics.box2d.PhysicsFactory;
@@ -87,10 +88,12 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	float y_start = 0.2f * CAMERA_HEIGHT;
 	float y_end = 0.2f * CAMERA_HEIGHT;
 	float x_end = x_start;
-	float lineWidth = 2;
+	float lineWidth = 3.8f;
 	Sprite pencil;
-	Sprite animatedPencil;
-	Body pencilPhysicsBody;	
+	boolean tipBroken = false;
+	Sprite animatedBall, brokenPencil, animatedEraser;
+	TiledSprite animatedPencil; 
+	Body pencilPhysicsBody, ballBody, brokenPencilPhysicsBody, eraserBody;	
 	boolean isTouch = false;
 	Scene scene;
 	private static final int LINE_COUNT = 100;
@@ -108,15 +111,14 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	private direction currentDirection = direction.down,
 			previousDirection = currentDirection;
 	private SurfaceGestureDetector mSGDA;
-	// acceleration
-	public static final float DistanceScale = 10;
-
-	private ITexture pencilTexture;
+	private ITexture pencilTexture, ballTexture;
 	private ITextureRegion pencilTextureRegion;
-	private TiledTextureRegion penTextureRegion;
+	private TiledTextureRegion animatedPencilTextureRegion, ballTextureRegion, paperTextureRegion, brokenPencilTextureRegion, eraserTextureRegion;
 	private PhysicsWorld mPhysicsWorld;
 	private BuildableBitmapTextureAtlas mBitmapTextureAtlas;
 	private static final FixtureDef FIXTURE_DEF = PhysicsFactory.createFixtureDef(0.1f, 0, 1);
+
+	protected static final float PIXEL_TO_METER_RATIO_DEFAULT = 32;
 
 	// 
 	// ===========================================================
@@ -142,12 +144,25 @@ public class MainActivity extends SimpleBaseGameActivity implements
 
 			@Override
 			protected boolean onSingleTap() {
-				// TODO Auto-generated method stub
+				animatedPencil.setCurrentTileIndex(1);				
+				
+				// break the pencil tip
+				final float widthD2 = brokenPencil.getWidth() / 2;
+				final float heightD2 = brokenPencil.getHeight() / 2;
+				final float angle = brokenPencilPhysicsBody.getAngle(); // keeps the body angle
+				final Vector2 v2 = Vector2Pool.obtain((x_end + widthD2) / PIXEL_TO_METER_RATIO_DEFAULT, (y_end + heightD2) / PIXEL_TO_METER_RATIO_DEFAULT);
+				brokenPencilPhysicsBody.setTransform(v2, angle);
+				Vector2Pool.recycle(v2);
+				
+				scene.attachChild(brokenPencil);	
+				tipBroken = true;
+				
+				/*// TODO Auto-generated method stub
 				for(int i = 0; i < lines.size(); i++) {
 					scene.detachChild(lines.get(i));
 				}
 				if(lines.size() > 0)
-					lines.clear();
+					lines.clear();*/
 				return false;
 			}
 
@@ -223,7 +238,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	public Scene onCreateScene() {
 
 		this.mEngine.registerUpdateHandler(new FPSLogger());
-		final Color gray = new Color(0.5f,0.5f,0.5f);
+		final Color gray = new Color(0.4f,0.4f,0.4f);
 		scene = new Scene();
 		scene.setBackground(new Background(1,1,1));
 		this.mPhysicsWorld = new PhysicsWorld(new Vector2(0, SensorManager.GRAVITY_EARTH), false);
@@ -236,27 +251,44 @@ public class MainActivity extends SimpleBaseGameActivity implements
 		
 		pencil = new Sprite(x_end, y_end,
 				this.pencilTextureRegion, this.getVertexBufferObjectManager());		
-		animatedPencil = new AnimatedSprite(x_end, y_end-penTextureRegion.getHeight(), this.penTextureRegion, this.getVertexBufferObjectManager());
-		pencilPhysicsBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, animatedPencil, BodyType.KinematicBody, FIXTURE_DEF);
-	
+		animatedPencil = new AnimatedSprite(x_end, y_end-animatedPencilTextureRegion.getHeight(), this.animatedPencilTextureRegion, this.getVertexBufferObjectManager());
+		animatedPencil.setCurrentTileIndex(0);
+		animatedBall = new AnimatedSprite(500, 500, this.ballTextureRegion, this.getVertexBufferObjectManager());
+		animatedEraser = new AnimatedSprite(300, 300, this.eraserTextureRegion, this.getVertexBufferObjectManager());
+		brokenPencil = new AnimatedSprite(200, 50, this.brokenPencilTextureRegion, this.getVertexBufferObjectManager());
+		Sprite paper = new Sprite(0, 0, this.paperTextureRegion, this.getVertexBufferObjectManager());
+		pencilPhysicsBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, animatedPencil, BodyType.KinematicBody, FIXTURE_DEF);		
+		brokenPencilPhysicsBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, brokenPencil, BodyType.DynamicBody, FIXTURE_DEF);
+		ballBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, animatedBall, BodyType.DynamicBody, FIXTURE_DEF);
+		eraserBody = PhysicsFactory.createCircleBody(this.mPhysicsWorld, animatedEraser, BodyType.DynamicBody, FIXTURE_DEF);
+			
 		final Rectangle ground = new Rectangle(0, CAMERA_HEIGHT - 2, CAMERA_WIDTH, 2, vertexBufferObjectManager);
-		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2 - animatedPencil.getWidth(), vertexBufferObjectManager);
+		final Rectangle roof = new Rectangle(0, 0, CAMERA_WIDTH, 2, vertexBufferObjectManager);
 		final Rectangle left = new Rectangle(0, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
-		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2 + animatedPencil.getWidth(), 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
+		final Rectangle right = new Rectangle(CAMERA_WIDTH - 2, 0, 2, CAMERA_HEIGHT, vertexBufferObjectManager);
 
-		final FixtureDef wallFixtureDef = PhysicsFactory.createFixtureDef(0, 0, 0);
+		final FixtureDef wallFixtureDef = PhysicsFactory.createFixtureDef(0, 1, 0);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, ground, BodyType.StaticBody, wallFixtureDef);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, roof, BodyType.StaticBody, wallFixtureDef);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, left, BodyType.StaticBody, wallFixtureDef);
 		PhysicsFactory.createBoxBody(this.mPhysicsWorld, right, BodyType.StaticBody, wallFixtureDef);
 
+	
 		scene.attachChild(ground);
 		scene.attachChild(roof);
 		scene.attachChild(left);
-		scene.attachChild(right);	
+		scene.attachChild(right);
+		scene.attachChild(paper);
+		
 	
 		
 		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(animatedPencil, pencilPhysicsBody, true, true));
+		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(brokenPencil, brokenPencilPhysicsBody, true, true));
+		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(animatedBall, ballBody, true, true));
+		this.mPhysicsWorld.registerPhysicsConnector(new PhysicsConnector(animatedEraser, eraserBody, true, true));
+		ballBody.setGravityScale(0);
+		scene.attachChild(animatedBall);	
+		//scene.attachChild(animatedEraser);
 		scene.registerUpdateHandler(this.mPhysicsWorld);
 	
 		if(isTouch) {
@@ -269,7 +301,35 @@ public class MainActivity extends SimpleBaseGameActivity implements
 			}
 
 			// main game loop
-			public void onUpdate(float pSecondsElapsed) {
+			public void onUpdate(float pSecondsElapsed) {	
+				
+				final float widthPencil = animatedPencil.getWidth() / 2;
+				final float heightPencil = animatedPencil.getHeight() / 2;
+				final float anglePencil = pencilPhysicsBody.getAngle(); // keeps the body angle
+				final float margin_edge = 10;
+				
+				// restrict the pencil to screen
+				if(animatedPencil.getX() + margin_edge > CAMERA_WIDTH) {					
+					final Vector2 v2 = Vector2Pool.obtain((CAMERA_WIDTH-margin_edge + widthPencil) / PIXEL_TO_METER_RATIO_DEFAULT, (animatedPencil.getY() + heightPencil) / PIXEL_TO_METER_RATIO_DEFAULT);
+					pencilPhysicsBody.setTransform(v2, anglePencil);
+					Vector2Pool.recycle(v2);					
+				}
+				if(animatedPencil.getX() - margin_edge < 0) {					
+					
+					final Vector2 v2 = Vector2Pool.obtain((margin_edge + widthPencil) / PIXEL_TO_METER_RATIO_DEFAULT, (animatedPencil.getY() + heightPencil) / PIXEL_TO_METER_RATIO_DEFAULT);
+					pencilPhysicsBody.setTransform(v2, anglePencil);
+					Vector2Pool.recycle(v2);					
+				}
+				if(animatedPencil.getY()+animatedPencil.getHeight() + margin_edge > CAMERA_HEIGHT) {	
+					final Vector2 v2 = Vector2Pool.obtain(( animatedPencil.getX()  + widthPencil) / PIXEL_TO_METER_RATIO_DEFAULT, (CAMERA_HEIGHT-animatedPencil.getHeight()-margin_edge + heightPencil) / PIXEL_TO_METER_RATIO_DEFAULT);
+					pencilPhysicsBody.setTransform(v2, anglePencil);
+					Vector2Pool.recycle(v2);					
+				}			
+				if(animatedPencil.getY()+animatedPencil.getHeight() - margin_edge < 0) {		
+					final Vector2 v2 = Vector2Pool.obtain((animatedPencil.getX() + widthPencil) / PIXEL_TO_METER_RATIO_DEFAULT, (margin_edge-animatedPencil.getHeight() + heightPencil) / PIXEL_TO_METER_RATIO_DEFAULT);
+					pencilPhysicsBody.setTransform(v2, anglePencil);
+					Vector2Pool.recycle(v2);					
+				}					
 				// calculate the direction of the line depending upon orientation of phone
 				if(!isTouch) {
 					Vector2 linearVel = mPhysicsWorld.getGravity();
@@ -294,14 +354,15 @@ public class MainActivity extends SimpleBaseGameActivity implements
 					}
 				}
 				// add the first line
-				if (lines.size() == 0) {
+				if (lines.size() == 0 && !tipBroken) {
 					lines.add(new Line(x_start, y_start, x_end, y_end,
 							lineWidth, vertexBufferObjectManager));
 					Line lineAdded = lines.get(lines.size() - 1);
+					PhysicsFactory.createLineBody(mPhysicsWorld, lineAdded, wallFixtureDef);
 					scene.attachChild(lineAdded);
 				}
 				// direction changed
-				else if (previousDirection != currentDirection) {
+				else if (previousDirection != currentDirection && !tipBroken) {
 					Line lastLine = lines.get(lines.size() - 1);
 					x_start = lastLine.getX2();
 					y_start = lastLine.getY2();
@@ -311,6 +372,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 							lineWidth, vertexBufferObjectManager));
 					Line lineAdded = lines.get(lines.size() - 1);
 					lineAdded.setColor(gray);
+					PhysicsFactory.createLineBody(mPhysicsWorld, lineAdded, wallFixtureDef);
 					scene.attachChild(lineAdded);
 				}
 				// moving in same direction
@@ -334,8 +396,7 @@ public class MainActivity extends SimpleBaseGameActivity implements
 							pencilPhysicsBody.setLinearVelocity(0, mPhysicsWorld.getGravity().y);
 							y_end = animatedPencil.getY()+ animatedPencil.getHeight();
 							break;
-						}
-						
+						}						
 						scene.detachChild(animatedPencil);
 						scene.attachChild(animatedPencil);
 					}
@@ -359,27 +420,38 @@ public class MainActivity extends SimpleBaseGameActivity implements
 						scene.detachChild(pencil);
 						scene.attachChild(pencil);						
 					}
-					
-					// pop the line from stack and scene
-					scene.detachChild(lines.get(lines.size() - 1));
-					lines.remove(lines.get(lines.size() - 1));
-
-					// push a new longer line on stack and scene
-					Line longerLine = new Line(x_start, y_start, x_end, y_end,
-							lineWidth, vertexBufferObjectManager);
-					lines.add(longerLine);
-					longerLine.setColor(gray);
-					scene.attachChild(longerLine);
-					
+					if(!tipBroken) {
+						// pop the line from stack and scene
+						scene.detachChild(lines.get(lines.size() - 1));
+						lines.remove(lines.get(lines.size() - 1));
+	
+						// push a new longer line on stack and scene
+						Line longerLine = new Line(x_start, y_start, x_end, y_end,
+								lineWidth, vertexBufferObjectManager);
+						lines.add(longerLine);
+						longerLine.setColor(gray);
+						PhysicsFactory.createLineBody(mPhysicsWorld, longerLine, wallFixtureDef);
+						scene.attachChild(longerLine);
+					}
 				}
 
 				// check collision of lines
-				for(int i = 0; i < lines.size()-2; i++) {
-					Line currentLine = lines.get(lines.size() - 1);
-					if(currentLine.collidesWith(lines.get(i))) {
-						currentLine.setColor(1,0,0);
+				for(int i = 0; i < lines.size(); i++) {
+					//Line currentLine = lines.get(lines.size() - 1);
+					if(animatedBall.collidesWith(lines.get(i))) {
+						/*// clear all lines
+						for(int j = 0; j < lines.size(); j++) {
+							scene.detachChild(lines.get(j));
+						}						
+						if(lines.size() > 0)
+							lines.clear();		
+						
+						// initialize end of first line to be added again in next cycle
+						y_end = y_start;
+						x_end = x_start;*/
+						break;
 					}
-				}				
+				}	
 				previousDirection = currentDirection;				
 			}
 		});
@@ -417,12 +489,17 @@ public class MainActivity extends SimpleBaseGameActivity implements
 	}
 
 	@Override
-	protected void onCreateResources() {
-		BitmapTextureAtlasTextureRegionFactory.setAssetBasePath("sprites/");
-		this.mBitmapTextureAtlas = new BuildableBitmapTextureAtlas(this.getTextureManager(), 512, 512, TextureOptions.NEAREST);
+	protected void onCreateResources() { 
+		BitmapTextureAtlasTextureRegionFactory.setAssetBasePath("sprites/"); 
+		this.mBitmapTextureAtlas = new BuildableBitmapTextureAtlas(this.getTextureManager(), 1024, 1024, TextureOptions.NEAREST);
 		
-		this.penTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "pencil.png", 1, 1); // 64x32
-
+		this.animatedPencilTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "pencilTile.png", 2, 1); 
+		this.ballTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "sharp.png", 1, 1); 
+		this.paperTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "page.png", 1, 1); 
+		
+		this.brokenPencilTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "pencil_tip.png", 1, 1);
+		this.eraserTextureRegion = BitmapTextureAtlasTextureRegionFactory.createTiledFromAsset(this.mBitmapTextureAtlas, this, "eraser.png", 1, 1);
+		
 		try {
 			this.mBitmapTextureAtlas.build(new BlackPawnTextureAtlasBuilder<IBitmapTextureAtlasSource, BitmapTextureAtlas>(0, 0, 1));
 			this.mBitmapTextureAtlas.load();
@@ -456,7 +533,6 @@ public class MainActivity extends SimpleBaseGameActivity implements
 			Log.e("exception: :", "Exception loading textures");
 			e1.printStackTrace();
 		}
-
 	}
 	@Override
 	public void onAccelerationChanged(final AccelerationData pAccelerationData) {
